@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from sqlite3 import Connection
 
-from flow_log_parser.constants import INSERT_BATCH_SIZE, TAG_OUTPUT_FILE, PORT_PROTOCOL_FILE
+from flow_log_parser.constants import *
 
 
 class FlowLogParser:
@@ -41,9 +41,13 @@ class FlowLogParser:
         with open(self.logs_file, "r") as file:
             reader = csv.reader(file, delimiter=' ')
             for row in reader:
-                yield row[6].lower(), row[7].lower()
+                yield row[DST_PORT_COL].lower(), row[DST_PROTOCOL_COL].lower()
 
-    def __insert_with_tag(self, records):
+    def __insert_with_tag(self, records: list[tuple]) -> None:
+        """
+        Inserts the tag lookup table entries into the DB.
+        :param records: [(dstport, dstprotocol, tag)]
+        """
         cursor = self.session.cursor()
         try:
             cursor.executemany(
@@ -55,7 +59,11 @@ class FlowLogParser:
             logging.error("Failed to insert the lookup table entries into the table, exp: {}".format(exp))
             self.session.rollback()
 
-    def __upsert_with_count(self, dict_records: dict):
+    def __upsert_with_count(self, dict_records: dict) -> None:
+        """
+        Inserts the parsed log counts into the DB.
+        :param dict_records: {(dstport, dstprotocol): count}
+        """
         cursor = self.session.cursor()
         records = [(k[0], k[1], count,) for k, count in dict_records.items()]
         logging.debug("Inserting the log count for {} tags in the DB".format(len(dict_records)))
@@ -74,14 +82,18 @@ class FlowLogParser:
             logging.error("Failed to insert the parsed log counts into the table, exp: {}".format(exp))
             self.session.rollback()
 
-    def __get_tag_counts(self) -> []:
+    def __get_tag_counts(self) -> list:
+        """
+        Gets the aggregated tag counts from DB.
+        :return: [(tag, count)]
+        """
         cursor = self.session.cursor()
         logging.debug("Getting the aggregated counts of the tags from DB.")
 
         try:
             cursor.execute(
                 '''
-                SELECT tag, SUM(count) FROM flowlog WHERE count > 0 GROUP BY(tag) ORDER BY tag
+                SELECT tag, SUM(count) FROM flowlog WHERE count > 0 GROUP BY lower(tag) ORDER BY tag
                 '''
             )
             results = cursor.fetchall()
@@ -93,6 +105,10 @@ class FlowLogParser:
             return []
 
     def __get_port_protocol_counts(self) -> list:
+        """
+        Gets the port, protocol counts from DB.
+        :return: [(port, protocol, count)]
+        """
         cursor = self.session.cursor()
         logging.debug("Getting the port-protocol counts from the DB.")
 
@@ -111,7 +127,7 @@ class FlowLogParser:
             logging.error("Failed to fetch the port-protocol counts from the database, exp:{}".format(exp))
             return []
 
-    def load_lookup_from_csv(self):
+    def load_lookup_from_csv(self) -> None:
         """
         Loads the lookup table into the DB.
         """
@@ -133,7 +149,7 @@ class FlowLogParser:
             self.__insert_with_tag(batch)
         logging.info("Successfully ingested {} number of entries from lookup table.".format(count))
 
-    def parse_flow_logs(self):
+    def parse_flow_logs(self) -> None:
         """
         Loads the parsed log counts into the DB.
         :return:
@@ -156,7 +172,7 @@ class FlowLogParser:
 
         logging.info("Successfully parsed {} log messages from the input file.".format(count))
 
-    def get_tag_counts(self):
+    def get_tag_counts(self) -> None:
         """
         Generates the tag counts file from the DB.
         """
@@ -164,7 +180,7 @@ class FlowLogParser:
         if not records:
             logging.warning("No tag records found in DB to generate the output.")
             return
-        q
+
         tsv_data = ["{} {}".format(val[0], val[1]) for val in records]
         tsv_data = "\n".join(tsv_data)
 
@@ -172,7 +188,7 @@ class FlowLogParser:
             file.write("Tag Count\n")
             file.write(tsv_data)
 
-    def get_port_protocol_counts(self):
+    def get_port_protocol_counts(self) -> None:
         """
         Generates the port-protocol counts file from the DB.
         """

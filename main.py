@@ -2,32 +2,38 @@ import argparse
 import logging
 import os.path
 import sys
+from sqlite3 import connect, Connection
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-
-from flow_log_parser.flow_log import FlowLog, create_table
+from flow_log_parser.flow_log import FlowLog
 from flow_log_parser.flow_log_parser import FlowLogParser
+
+root = logging.getLogger()
+root.setLevel(logging.INFO)
 
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+
+root.addHandler(ch)
 
 DB_FILE = "flow_log.db"
 
 
-def create_database() -> Session:
-    engine = create_engine("sqlite:///{}".format(DB_FILE), echo=True)
-    create_table(engine)
-    logging.debug("Created the database.")
+def create_database() -> Connection:
+    engine = connect(DB_FILE)
+    FlowLog.create_table(engine)
 
-    return sessionmaker(bind=engine)()
+    return engine
 
 
-def get_insights(session: Session, lookup_file: str, logs_file: str):
-    flow_log_parser = FlowLogParser(session=session, logs_file=logs_file, lookup_file=lookup_file)
+def get_insights(session: Connection, lookup_file: str, logs_file: str):
+    flow_log_parser = FlowLogParser(conn=session, logs_file=logs_file, lookup_file=lookup_file)
 
     flow_log_parser.load_lookup_from_csv()
     flow_log_parser.parse_flow_logs()
+    flow_log_parser.get_tag_counts()
+    flow_log_parser.get_port_protocol_counts()
 
 
 if __name__ == "__main__":
@@ -41,6 +47,7 @@ if __name__ == "__main__":
 
     if parser_args.debug:
         ch.setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if not os.path.exists(parser_args.input):
         logging.error("Please provide a valid input log file path.")

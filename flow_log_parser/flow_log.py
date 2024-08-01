@@ -1,27 +1,24 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, PrimaryKeyConstraint, UniqueConstraint
-from sqlalchemy.types import Integer, String
+import logging
 
 
-Base = declarative_base()
-
-
-class FlowLog(Base):
+class FlowLog:
     """
-    Flow Log table
+    Flow Log DB model.
     """
-    __tablename__ = "flowlog"
 
-    id = Column(Integer, autoincrement=True, primary_key=True)
-    port = Column(Integer, nullable=False)
-    protocol = Column(String(255), nullable=False)
-    tag = Column(String(255), nullable=True, index=True, default="Untagged")
-    count = Column(Integer, nullable=False, default=0)
-    
-    __table_args__ = (
-        UniqueConstraint("port", "protocol", name="unique_fields"),
-    )
+    @staticmethod
+    def create_table(conn):
+        logging.info("Creating the FlowLog table.")
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS flowlog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                port INTEGER NOT NULL,
+                protocol VARCHAR(256) NOT NULL,
+                tag VARCHAR(256) NOT NULL DEFAULT 'UNTAGGED',
+                count INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(port, protocol)
+            )
+        """)
 
-
-def create_table(db_engine):
-    Base.metadata.create_all(db_engine)
+        conn.commit()

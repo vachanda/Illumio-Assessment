@@ -9,15 +9,6 @@ from random import choice
 from main import parse_and_get_insights
 from flow_log_parser.constants import *
 
-root = logging.getLogger()
-root.setLevel(logging.INFO)
-
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(filename)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-
-root.addHandler(ch)
 
 PORT_LIMIT = 100
 TAG_LIMIT = 75

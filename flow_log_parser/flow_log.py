@@ -1,4 +1,4 @@
- import logging
+import logging
 
 
 class FlowLog:
@@ -21,6 +21,6 @@ class FlowLog:
             )
         """)
 
-        cursor.execute("""CREATE INDEX tag_idx ON flowlog(tag)""")
+        cursor.execute("""CREATE INDEX tag_idx ON flowlog (tag)""")
 
         conn.commit()

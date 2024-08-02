@@ -1,4 +1,4 @@
-import logging
+ import logging
 
 
 class FlowLog:
@@ -20,5 +20,7 @@ class FlowLog:
                 UNIQUE(port, protocol)
             )
         """)
+
+        cursor.execute("""CREATE INDEX tag_idx ON flowlog(tag)""")
 
         conn.commit()

@@ -8,7 +8,7 @@ from flow_log_parser.constants import TAG_OUTPUT_FILE, PORT_PROTOCOL_FILE
 from flow_log_parser.flow_log import FlowLog
 from flow_log_parser.flow_log_parser import FlowLogParser
 
-root = logging.getLogger("FlowLogParser")
+root = logging.getLogger()
 root.setLevel(logging.INFO)
 
 ch = logging.StreamHandler(sys.stdout)

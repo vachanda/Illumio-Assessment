@@ -1,7 +1,16 @@
 # Illumio-Assessment
-This repo contains the code for the take home assessment. The script uses a lookup table to parse the VPC flow logs and extract the tag counts and port-protocol counts.
+
+This repo contains the code for the take home assessment.
+
+## Description
+The script uses a lookup table to parse the VPC flow logs and extract the tag counts and port-protocol counts. The repo also contains the script to generate and test the log parser with synthetic data.
 
 ## Usage
+- To test the script with generated lookup and flow logs -
+```
+python3 test_and_assert.py
+```
+- To Run the script with custom lookup table and log file -
 ```
 python3 main.py -i <log file> -l <lookup table>
 
@@ -12,3 +21,17 @@ python3 main.py -i <log file> -l <lookup table>
 ## Assumptions
 - The protocol is lowercase string in the lookup table and logs.
 - The lookup table has unique port, protocol combinations. That is no two port-portocol combinations are present.
+- The lookup table has unique port, protocol combinations. That is no two same port-protocol combinations are present.
+- Lookup table csv format -
+```
+dstport,dstprotocol,tag
+22,tcp,sv_P1
+23,udp,SV_P2
+45,tcp,sv_P2
+5369,tcp,sv_p3
+22,udp,SV_P2
+```
+- VPC flow log tsv format is based on the VPC flow log format of AWS mentioned [here]( https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html). The 6 and 7 column contain the dstport and protocol respectively.
+```
+2   123456789010    eni-1235b8ca123456789   172.31.16.139   172.31.16.21    20641   22  tcp 20  4249    1418530010  1418530070  ACCEPT  OK
+```

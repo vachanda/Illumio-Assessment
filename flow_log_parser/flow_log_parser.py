@@ -28,7 +28,7 @@ class FlowLogParser:
         """
         logging.debug("Getting the lookup table content from the file: {}".format(self.lookup_csv_file))
         with open(self.lookup_csv_file, "r") as file:
-            reader = csv.reader(file)
+            reader = csv.DictReader(file)
             for row in reader:
                 yield row
 
@@ -39,7 +39,7 @@ class FlowLogParser:
         """
         logging.debug("Getting the log file from the file: {}".format(self.logs_file))
         with open(self.logs_file, "r") as file:
-            reader = csv.reader(file, delimiter=' ')
+            reader = csv.reader(file, delimiter='\t')
             for row in reader:
                 yield row[DST_PORT_COL].lower(), row[DST_PROTOCOL_COL].lower()
 
@@ -77,12 +77,12 @@ class FlowLogParser:
             )
 
             self.session.commit()
-            logging.info("Successfully updated the log counts in the table.")
+            logging.debug("Successfully updated the log counts in the table.")
         except Exception as exp:
             logging.error("Failed to insert the parsed log counts into the table, exp: {}".format(exp))
             self.session.rollback()
 
-    def __get_tag_counts(self) -> list:
+    def __get_tag_counts(self, row_offset) -> list:
         """
         Gets the aggregated tag counts from DB.
         :return: [(tag, count)]
@@ -93,18 +93,19 @@ class FlowLogParser:
         try:
             cursor.execute(
                 '''
-                SELECT tag, SUM(count) FROM flowlog WHERE count > 0 GROUP BY lower(tag) ORDER BY tag
-                '''
+
+                SELECT tag, SUM(count) FROM flowlog WHERE count > 0 GROUP BY lower(tag) ORDER BY tag LIMIT ? OFFSET ?
+                ''', (SQL_SELECT_LIMIT, row_offset)
             )
             results = cursor.fetchall()
-            logging.info("Found {} tag counts in the DB.".format(len(results)))
+            logging.debug("Found {} tag counts in the DB.".format(len(results)))
 
             return results
         except Exception as exp:
             logging.error("Failed to fetch the tag counts from the database, exp:{}".format(exp))
             return []
 
-    def __get_port_protocol_counts(self) -> list:
+    def __get_port_protocol_counts(self, row_offset) -> list:
         """
         Gets the port, protocol counts from DB.
         :return: [(port, protocol, count)]
@@ -115,12 +116,12 @@ class FlowLogParser:
         try:
             cursor.execute(
                 '''
-                SELECT port, protocol, count FROM flowlog WHERE count > 0
-                '''
+                SELECT port, protocol, count FROM flowlog WHERE count > 0 ORDER BY port ASC LIMIT ? OFFSET ?
+                ''', (SQL_SELECT_LIMIT, row_offset)
             )
 
             records = cursor.fetchall()
-            logging.info("Found {} port-protocol counts in the DB".format(len(records)))
+            logging.debug("Found {} port-protocol counts in the DB".format(len(records)))
 
             return records
         except Exception as exp:
@@ -138,14 +139,14 @@ class FlowLogParser:
         for row in self.__get_csv_content():
             if len(batch) == INSERT_BATCH_SIZE:
                 self.__insert_with_tag(batch)
-                count += INSERT_BATCH_SIZE
-                batch = []
+                batch = [tuple(row.values())]
+                count += 1
                 logging.debug("Inserted a lookup table batch of {} into the table".format(INSERT_BATCH_SIZE))
             else:
-                batch.append(row)
+                batch.append(tuple(row.values()))
+                count += 1
 
         if batch:
-            count += len(batch)
             self.__insert_with_tag(batch)
         logging.info("Successfully ingested {} number of entries from lookup table.".format(count))
 
@@ -159,16 +160,16 @@ class FlowLogParser:
         count = 0
 
         for pair in self.__get_tsv_content():
-            port_protocol_dict[pair] += 1
-
-            if len(port_protocol_dict) > INSERT_BATCH_SIZE:
+            count += 1
+            if len(port_protocol_dict) == INSERT_BATCH_SIZE:
                 self.__upsert_with_count(port_protocol_dict)
                 port_protocol_dict = defaultdict(int)
-                count += INSERT_BATCH_SIZE
+                port_protocol_dict[pair] += 1
+            else:
+                port_protocol_dict[pair] += 1
 
         if port_protocol_dict:
             self.__upsert_with_count(port_protocol_dict)
-            count += len(port_protocol_dict)
 
         logging.info("Successfully parsed {} log messages from the input file.".format(count))
 
@@ -176,31 +177,42 @@ class FlowLogParser:
         """
         Generates the tag counts file from the DB.
         """
-        records = self.__get_tag_counts()
+        row_offset = 0
+
+        records = self.__get_tag_counts(row_offset)
         if not records:
             logging.warning("No tag records found in DB to generate the output.")
             return
 
-        tsv_data = ["{} {}".format(val[0], val[1]) for val in records]
-        tsv_data = "\n".join(tsv_data)
-
         with open(TAG_OUTPUT_FILE, "w+") as file:
-            file.write("Tag Count\n")
-            file.write(tsv_data)
+            file.write("{}\t{}\n".format(TAG_HEADER, COUNT_HEADER))
+
+            while records:
+                tsv_data = ["{}\t{}\n".format(val[0], val[1]) for val in records]
+                tsv_data = "".join(tsv_data)
+                file.write(tsv_data)
+
+                row_offset += SQL_SELECT_LIMIT
+                records = self.__get_tag_counts(row_offset)
 
     def get_port_protocol_counts(self) -> None:
         """
         Generates the port-protocol counts file from the DB.
         """
-        records = self.__get_port_protocol_counts()
+        row_offset = 0
+        records = self.__get_port_protocol_counts(row_offset)
 
         if not records:
             logging.warning("No records for port,protocol found in DB to generate output.")
             return
 
-        tsv_data = ["{} {}  {}".format(val[0], val[1], val[2]) for val in records]
-        tsv_data = "\n".join(tsv_data)
-
         with open(PORT_PROTOCOL_FILE, "w+") as file:
-            file.write("Port    Protocol    Count\n")
-            file.write(tsv_data)
+            file.write("{}\t{}\t{}\n".format(PORT_HEADER, PROTOCOL_HEADER, COUNT_HEADER))
+
+            while records:
+                tsv_data = ["{}\t{}\t{}\n".format(val[0], val[1], val[2]) for val in records]
+                tsv_data = "".join(tsv_data)
+                file.write(tsv_data)
+
+                row_offset += SQL_SELECT_LIMIT
+                records = self.__get_port_protocol_counts(row_offset)

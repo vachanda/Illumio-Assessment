@@ -4,20 +4,32 @@ import os.path
 import sys
 from sqlite3 import connect, Connection
 
+from flow_log_parser.constants import TAG_OUTPUT_FILE, PORT_PROTOCOL_FILE
 from flow_log_parser.flow_log import FlowLog
 from flow_log_parser.flow_log_parser import FlowLogParser
 
-root = logging.getLogger()
+root = logging.getLogger("FlowLogParser")
 root.setLevel(logging.INFO)
 
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(filename)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 
 root.addHandler(ch)
 
 DB_FILE = "flow_log.db"
+
+
+def cleanup_workdir():
+    if os.path.exists(DB_FILE):
+        os.remove(DB_FILE)
+
+    if os.path.exists(TAG_OUTPUT_FILE):
+        os.remove(TAG_OUTPUT_FILE)
+
+    if os.path.exists(PORT_PROTOCOL_FILE):
+        os.remove(PORT_PROTOCOL_FILE)
 
 
 def create_database() -> Connection:
@@ -27,7 +39,9 @@ def create_database() -> Connection:
     return engine
 
 
-def get_insights(session: Connection, lookup_file: str, logs_file: str):
+def parse_and_get_insights(lookup_file: str, logs_file: str):
+    cleanup_workdir()
+    session = create_database()
     flow_log_parser = FlowLogParser(conn=session, logs_file=logs_file, lookup_file=lookup_file)
 
     flow_log_parser.load_lookup_from_csv()
@@ -57,4 +71,4 @@ if __name__ == "__main__":
         logging.error("Please provide a valid lookup file path.")
         sys.exit(1)
 
-    get_insights(create_database(), parser_args.lookup_file, parser_args.input)
+    parse_and_get_insights(parser_args.lookup_file, parser_args.input)
